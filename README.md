@@ -4,7 +4,7 @@
 
 ```npm install```
 
-# Create .env file from .env.example
+# 2. Create .env file from .env.example
 
-[demo project](https://vedagent-test-task-back.q-host.ru/)
+go to [demo project](https://vedagent-test-task-back.q-host.ru/)
 

@@ -6,5 +6,5 @@
 
 # 2. Create .env file from .env.example
 
-go to [demo project](https://vedagent-test-task-back.q-host.ru/)
+go to [demo project](https://vedagent-test-task-front.q-host.ru/)
 

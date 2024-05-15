@@ -7,7 +7,8 @@
       "strict": true,
       "esModuleInterop": true,
       "allowSyntheticDefaultImports": true,
-      "types": ["vite/client"]
+      "types": ["vite/client"],
+      "allowJs": true
     },
     "include": ["src/**/*"],
     "exclude": ["node_modules"]

@@ -1,7 +1,7 @@
 <script setup>
-import CalculatorForm from './components/CalculatorForm.vue'
+import Search from './components/Search.vue'
 </script>
 
 <template>
-  <CalculatorForm/>
+  <Search/>
 </template>

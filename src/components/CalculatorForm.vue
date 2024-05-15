@@ -1,4 +1,5 @@
 <template>
+    {{ formData }}
     <div class="isolate bg-white px-6 py-24 sm:py-32 lg:px-8">
         <div class="mx-auto max-w-2xl text-center">
             <h4 class="text-1xl font-bold tracking-tight text-gray-900 sm:text-2xl">Калькулятор расчета стоимости
@@ -103,48 +104,19 @@
 </template>
 
 <script lang="ts">
-import axios, { AxiosError, AxiosResponse } from 'axios'
+import ApiService from "../services/ApiService"
+import { IDataProps, IFormData, ISelectOption, IFormCalculateResult, IFetchActionProps } from "../types"
+import { AxiosError, AxiosResponse } from 'axios'
 import { useVuelidate } from '@vuelidate/core'
 import { required, numeric, minValue, maxValue } from '@vuelidate/validators'
 import { DebounceInstance, debounce } from 'vue-debounce'
 
-const API_URL = import.meta.env.VITE_API_URL+'/api/v1'
 
-interface ITransportCompany{
-    value: number
-    label: string
-}
-
-interface IProductType{
-    value: number
-    label: string
-}
-
-interface IFormData{
-    transportCompany: number | null
-    productType: number | null
-    weight: number | null
-    distance: number | null
-}
-
-interface IDataProps{
-    isLoading: boolean
-    isValidationEnabled: boolean
-    result: {
-        value: number
-        print_value?: string
-    },
-    transportCompanies: ITransportCompany[], 
-    productTypes: IProductType[],  
-    formData: IFormData,
-    error: null | AxiosError 
-    message: null | string
-}
-
-const defFormData:IFormData  = { transportCompany: null, productType: null, weight: 0, distance: 0 }
-const defResult:IDataProps['result'] = { value: 0, print_value:''}
-const defTransportCompanies: IDataProps['transportCompanies'] = []
-const defProductTypes: IDataProps['productTypes'] = []
+const debounceTimeout = 800
+const defFormData: IFormData = { transportCompany: null, productType: null, weight: 0, distance: 0 }
+const defResult: IFormCalculateResult = { value: 0, print_value:''}
+const defTransportCompanies: ISelectOption[] = []
+const defProductTypes: ISelectOption[] = []
 
 export default {
     name: 'Calculator',
@@ -155,13 +127,13 @@ export default {
         return {
             isLoading: false,
             isValidationEnabled: true,
-            result: {...defResult},
-            transportCompanies: {...defTransportCompanies}, 
-            productTypes: {...defProductTypes},  
+            result: defResult,
+            transportCompanies: defTransportCompanies, 
+            productTypes: defProductTypes,  
             formData: {...defFormData},
             error: null, 
             message: null, 
-        };
+        }
     },
     validations() {
         return {
@@ -174,84 +146,98 @@ export default {
         }
     },
     mounted() {
-        this.fetchSelectOptions();
+        this.fetchSelectOptions()
     },
     created() {
-        this.getCalculateDebounce = debounce(() => {
-            this.getCalculate();
-        }, 800)
+        this.getCalculate = debounce(async () => {
+            const response = await ApiService.getCalculateResult(this.formData)
+            this.result = response.data
+        }, debounceTimeout)
     },
     methods: {
         async onChange(): Promise<void> {
-            this.error = null;
+            this.error = null
 
             if(!!this.isValidationEnabled){
                 const isFormCorrect = await this.v$.$validate()
 
                 if (!!isFormCorrect) {
-                    this.getCalculateDebounce()
+                    this.getCalculate()
                 }
             }else{
                 this.isValidationEnabled = true
                 this.message = null
             }
         },
-        async getCalculate(): Promise<void> {
-            this.isLoading = true
-            try {
-                const response = await axios.post(`${API_URL}/get-calculate-result`, this.formData);
-                this.result = { ...response.data };
-                this.isLoading = false
-            } catch (err) {
-                if(err instanceof AxiosError){
-                    this.error = err?.response?.data?.message;
-                }
-                console.error(err);
-                this.isLoading = false
-            }
-        },
         async fetchSelectOptions(): Promise<void> {
-            try {
-                const [transportResponse, productTypesResponse] = await Promise.all([
-                    axios.get(`${API_URL}/get-transport-companies`),
-                    axios.get(`${API_URL}/get-product-types`)
-                ]);
-                this.transportCompanies = transportResponse?.data?.data;
-                this.productTypes = productTypesResponse?.data?.data;
-            } catch (err) {
-                if(err instanceof AxiosError){
-                    this.error = err?.response?.data?.message;
+            this.fetchAction({
+                success: async() => {
+                    const [transportResponse, productTypesResponse] = await ApiService.fetchSelectOptions()
+                    this.transportCompanies = transportResponse.data.data
+                    this.productTypes = productTypesResponse.data.data
                 }
-                console.error(err);
-            }
+            })
         },
         async submitForm(): Promise<void> {
+            this.fetchAction({
+                success: async() => {
+                    const isFormCorrect = await this.v$.$validate()
+                    this.isValidationEnabled = true
+
+                    if (!!isFormCorrect) {
+                        const response = await ApiService.saveCalculation(this.formData)
+                        this.handleSuccess(response)
+                    } 
+                }
+            })
+        },
+        async fetchAction({success, error, finaly}: IFetchActionProps){
+            this.isLoading = true
             try {
-                const isFormCorrect = await this.v$.$validate()
-                this.isValidationEnabled = true
-
-                if (!!isFormCorrect) {
-                    const response = await axios.post(`${API_URL}/save-calculation`, this.formData);
-                   
-                    this.message = response?.data?.message
-                    this.isValidationEnabled = false
-                    this.formData = {...defFormData}
-                    // this.formData = { transportCompany: null, productType: null, weight: 0, distance: 0 }
-                    this.error = null;
-                    this.result = {...defResult}
-                } else {
-                    console.error('Form is not valid.');
-                }
+                success()
             } catch (err) {
-                if(err instanceof AxiosError){
-                    this.error = err?.response?.data?.message;
+                this.handleFailure(err)
+                if(typeof error == 'function'){
+                    error()
                 }
-                this.isValidationEnabled = true
-
+            }finally{
+                this.isLoading = false
+                
+                if(typeof finaly == 'function'){
+                    finaly()
+                }
+            }
+        },
+        setFormData(data: IFormData): void {
+            this.formData = {...this.formData, ...data}
+        },
+        setError(err: IDataProps['error']): void {
+            this.error = err
+        },
+        setResult(result: IDataProps['result']): void {
+            this.result = result
+        },
+        resetForm(): void {
+            this.setFormData(defFormData) 
+            this.setError(null)
+            this.setResult(defResult)
+        },
+        handleError(err: unknown): void {
+            if (err instanceof AxiosError) {
+                this.error = err?.response?.data?.message;
+            } else {
                 console.error(err);
             }
         },
-        getCalculateDebounce: {} as DebounceInstance<[]>
+        handleSuccess(response: AxiosResponse): void {
+            this.message = response?.data?.message
+            this.isValidationEnabled = false
+            this.resetForm()
+        },
+        handleFailure(error: unknown): void {
+            this.handleError(error);
+        },
+        getCalculate: {} as DebounceInstance<[]>,
     }
 };
 </script>

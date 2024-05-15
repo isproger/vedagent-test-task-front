@@ -11,8 +11,6 @@ export interface ISelectOption{
     label: string
 }
 
-
-
 export interface IFormData{
     transportCompany: number | null
     productType: number | null
@@ -20,13 +18,20 @@ export interface IFormData{
     distance: number | null
 }
 
+export interface IFormCalculateResult{
+    value: number
+    print_value?: string
+}
+
 export interface IFormSelectOptionResponse{
     data: ISelectOption[]
 }
 
-export interface IFormCalculateResponse{
-    value: number
-    print_value?: string
+export interface IFormCalculateResponse extends IFormCalculateResult{
+    errors?:{
+        [k:string]: any
+    }
+    message?: string
 }
 
 export interface IFormSaveResponse{
@@ -44,8 +49,6 @@ export interface IFormSaveResponse{
     error?: string
     [k: string]: any
 }
-
-export interface IFormCalculateResult extends IFormCalculateResponse{}
 
 export interface IDataProps{
     isLoading: boolean

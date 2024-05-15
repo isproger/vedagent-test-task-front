@@ -1,5 +1,4 @@
 <template>
-    {{ formData }}
     <div class="isolate bg-white px-6 py-24 sm:py-32 lg:px-8">
         <div class="mx-auto max-w-2xl text-center">
             <h4 class="text-1xl font-bold tracking-tight text-gray-900 sm:text-2xl">Калькулятор расчета стоимости
@@ -85,7 +84,7 @@
                     {{ result.print_value }} руб.
                 </div>
             </div>
-            <div v-if="isLoading" class="absolute w-full h-full bg-[#fff]/80 top-0">
+            <div v-if="!!isLoading" class="absolute w-full h-full bg-[#fff]/80 top-0">
                 <div role="status" class="absolute -translate-x-1/2 -translate-y-1/2 top-2/4 left-1/2">
                     <svg aria-hidden="true" class="w-8 h-8 text-gray-200 animate-spin dark:text-gray-600 fill-blue-600"
                         viewBox="0 0 100 101" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -147,52 +146,54 @@ export default {
     },
     mounted() {
         this.fetchSelectOptions()
+        // if defaultFormData is correct for calculate
+        this.applyIfIsCorrectForm(() => this.getCalculate())
     },
     created() {
         this.getCalculate = debounce(async () => {
-            const response = await ApiService.getCalculateResult(this.formData)
-            this.result = response.data
+            this.fetchAction({
+                success: async() => {
+                    this.applyIfIsCorrectForm(async () => {
+                        const response = await ApiService.getCalculateResult(this.formData)
+                        this.setResult(response.data)
+                    })
+                }
+            })
         }, debounceTimeout)
     },
     methods: {
-        async onChange(): Promise<void> {
-            this.error = null
+        async applyIfIsCorrectForm(callBack: () => void): Promise<void> {
+            let isFormCorrect = await this.v$.$validate()
 
-            if(!!this.isValidationEnabled){
-                const isFormCorrect = await this.v$.$validate()
-
-                if (!!isFormCorrect) {
-                    this.getCalculate()
-                }
-            }else{
-                this.isValidationEnabled = true
-                this.message = null
+            if (!!isFormCorrect && typeof callBack == 'function') {
+                callBack()
             }
+        },
+        async onChange(): Promise<void> {
+            this.repairForm()
+            this.applyIfIsCorrectForm(() => this.getCalculate())
         },
         async fetchSelectOptions(): Promise<void> {
             this.fetchAction({
                 success: async() => {
                     const [transportResponse, productTypesResponse] = await ApiService.fetchSelectOptions()
-                    this.transportCompanies = transportResponse.data.data
-                    this.productTypes = productTypesResponse.data.data
+                    this.setTransportCompanies(transportResponse.data.data)
+                    this.setProductTypes(productTypesResponse.data.data)
                 }
             })
         },
         async submitForm(): Promise<void> {
             this.fetchAction({
                 success: async() => {
-                    const isFormCorrect = await this.v$.$validate()
-                    this.isValidationEnabled = true
-
-                    if (!!isFormCorrect) {
+                    this.applyIfIsCorrectForm(async() =>{
                         const response = await ApiService.saveCalculation(this.formData)
                         this.handleSuccess(response)
-                    } 
+                    })
                 }
             })
         },
         async fetchAction({success, error, finaly}: IFetchActionProps){
-            this.isLoading = true
+            this.setIsLoading(true)
             try {
                 success()
             } catch (err) {
@@ -200,13 +201,22 @@ export default {
                 if(typeof error == 'function'){
                     error()
                 }
-            }finally{
-                this.isLoading = false
+            } finally{
+                this.setIsLoading(false)
                 
                 if(typeof finaly == 'function'){
                     finaly()
                 }
             }
+        },
+        setIsLoading(flag: IDataProps['isLoading']): void {
+            this.isLoading = flag
+        },
+        setTransportCompanies(list: ISelectOption[]): void {
+            this.transportCompanies = list
+        },
+        setProductTypes(list: ISelectOption[]): void {
+            this.productTypes = list
         },
         setFormData(data: IFormData): void {
             this.formData = {...this.formData, ...data}
@@ -214,28 +224,57 @@ export default {
         setError(err: IDataProps['error']): void {
             this.error = err
         },
+        setMessage(message: IDataProps['message']): void {
+            this.message = message
+        },
         setResult(result: IDataProps['result']): void {
             this.result = result
         },
-        resetForm(): void {
-            this.setFormData(defFormData) 
+        setIsValidationEnabled(flag: IDataProps['isValidationEnabled']): void {
+            this.isValidationEnabled = flag
+        },
+
+        clearError(): void {
             this.setError(null)
+        },
+        clearMessage(): void {
+            this.setMessage(null)
+        },
+        clearResult(): void {
             this.setResult(defResult)
         },
+        clearForm(): void {
+            this.setFormData(defFormData) 
+            this.clearError()
+        },
+        repairForm(): void {
+            if(!this.isValidationEnabled) this.setIsValidationEnabled(true)
+            if(!!this.error) this.clearError()
+            if(!!this.message) this.clearMessage()
+            if(!!this.result.value) this.clearResult()
+        },
+        clearIsValidationEnabled(): void {
+            this.setIsValidationEnabled(false) 
+        },
+
         handleError(err: unknown): void {
             if (err instanceof AxiosError) {
+                console.log('Is instanceof AxiosError');
+                
                 this.error = err?.response?.data?.message;
             } else {
+                console.log('Not instanceof AxiosError');
                 console.error(err);
             }
         },
         handleSuccess(response: AxiosResponse): void {
-            this.message = response?.data?.message
-            this.isValidationEnabled = false
-            this.resetForm()
+            this.setMessage(response?.data?.message)
+            this.clearIsValidationEnabled()
+            this.clearForm()
         },
         handleFailure(error: unknown): void {
             this.handleError(error);
+            this.setIsValidationEnabled(true)
         },
         getCalculate: {} as DebounceInstance<[]>,
     }
